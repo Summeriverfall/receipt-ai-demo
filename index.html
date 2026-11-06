@@ -54,8 +54,8 @@
         <h1 class="text-lg sm:text-xl font-semibold tracking-tight">小票 AI 识别验证</h1>
       </div>
         <div class="flex items-center gap-2 text-sm">
-        <button id="btnKey" type="button" class="px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-xs hover:bg-slate-50">真实 AI（可选）</button>
-        <span id="healthBadge" class="px-2.5 py-1 rounded-full badge-ok text-xs font-medium">演示模式 · 免 Key</span>
+        <button id="btnKey" type="button" class="hidden px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-xs hover:bg-slate-50">更换 Key</button>
+        <span id="healthBadge" class="px-2.5 py-1 rounded-full badge-ok text-xs font-medium">真实识别已就绪</span>
         <span class="hidden sm:inline text-slate-400">本地演示</span>
       </div>
     </div>
@@ -79,7 +79,7 @@
       <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
         <div>
           <h2 class="text-base font-semibold">1. 图片输入</h2>
-          <p class="text-sm text-slate-500 mt-0.5">默认免 Key：点「一键演示」即可。二维码本地解码；真实 AI 识别才需要 Key</p>
+          <p class="text-sm text-slate-500 mt-0.5">样本免 Key；真小票已接通 Gemini，直接拍/上传即可识别</p>
         </div>
         <div class="flex flex-wrap gap-2">
           <button id="btnQuickDemo" type="button" class="px-3 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent2">一键演示</button>
@@ -193,6 +193,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.3.1/dist/jsQR.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+  <script src="./config.js"></script>
   <script src="./app.js"></script>
 </body>
 </html>
