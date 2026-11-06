@@ -1,0 +1,20 @@
+{
+  "name": "receipt-ai-demo",
+  "version": "1.0.0",
+  "description": "小票 AI 识别可行性验证 Demo（Gemini 2.5 Flash）",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@google/genai": "^1.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "uuid": "^11.1.0"
+  }
+}
