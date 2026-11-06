@@ -633,8 +633,6 @@ raw_text: AI 识别的原始全文
     c.width = v.videoWidth;
     c.height = v.videoHeight;
     const ctx = c.getContext('2d');
-    ctx.translate(c.width, 0);
-    ctx.scale(-1, 1);
     ctx.drawImage(v, 0, 0);
     setPreview(c.toDataURL('image/jpeg', 0.92), 'image/jpeg');
   }
