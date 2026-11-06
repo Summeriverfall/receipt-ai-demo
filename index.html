@@ -34,7 +34,7 @@
       border-radius: 50%; animation: spin .7s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    #videoPreview { transform: scaleX(-1); }
+    /* 小票拍摄不镜像，保持真实方向 */
     .thumb { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; background: #e2e8f0; }
     pre[class*="language-"] { margin: 0; font-size: 12px; max-height: 420px; }
     .json-edit {
