@@ -123,6 +123,9 @@ raw_text: AI 识别的原始全文
     },
   ];
 
+  const CFG = window.RECEIPT_DEMO_CONFIG || {};
+  const PROXY_URL = (CFG.recognizeUrl || '').trim();
+
   const state = {
     imageDataUrl: null,
     mimeType: 'image/jpeg',
@@ -183,21 +186,56 @@ raw_text: AI 识别的原始全文
     return (localStorage.getItem(KEY_STORAGE) || '').trim();
   }
 
+  function canRealRecognize() {
+    return state.useBackend || Boolean(PROXY_URL) || Boolean(getApiKey());
+  }
+
   function setApiKey(key) {
     if (key) localStorage.setItem(KEY_STORAGE, key.trim());
     else localStorage.removeItem(KEY_STORAGE);
     updateKeyBadge();
   }
 
+  /** 从 URL ?key= / #key= / config.geminiApiKey 注入，避免每次手填 */
+  function bootstrapApiKey() {
+    const cfgKey = (CFG.geminiApiKey || '').trim();
+    if (cfgKey) setApiKey(cfgKey);
+
+    let fromUrl = '';
+    try {
+      const q = new URLSearchParams(location.search);
+      fromUrl = (q.get('key') || '').trim();
+      if (!fromUrl && location.hash) {
+        const h = new URLSearchParams(location.hash.replace(/^#/, ''));
+        fromUrl = (h.get('key') || '').trim();
+      }
+    } catch (_) {}
+
+    if (fromUrl) {
+      setApiKey(fromUrl);
+      // 去掉地址栏里的 key，避免分享屏幕时泄露
+      try {
+        const clean = location.pathname + location.search.replace(/[?&]key=[^&]*/g, '').replace(/^&/, '?').replace(/\?$/, '');
+        history.replaceState(null, '', clean + (location.hash && !location.hash.includes('key=') ? location.hash : ''));
+      } catch (_) {}
+      toast('真实识别 Key 已写入本机，可拍真小票');
+    }
+
+    if (els.keyInput) els.keyInput.value = getApiKey();
+  }
+
   function updateKeyBadge() {
     if (state.useBackend) return;
-    if (getApiKey()) {
-      els.healthBadge.textContent = '演示 + 真实 AI 就绪';
+    if (PROXY_URL || (CFG.geminiApiKey || '').trim() || getApiKey()) {
+      els.healthBadge.textContent = '真实识别已就绪';
       els.healthBadge.className = 'px-2.5 py-1 rounded-full badge-ok text-xs font-medium';
-    } else {
-      els.healthBadge.textContent = '演示模式 · 免 Key';
-      els.healthBadge.className = 'px-2.5 py-1 rounded-full badge-ok text-xs font-medium';
+      if (els.btnKey && (PROXY_URL || (CFG.geminiApiKey || '').trim())) {
+        els.btnKey.classList.add('hidden');
+      }
+      return;
     }
+    els.healthBadge.textContent = '演示可用 · 真票需配置 Key';
+    els.healthBadge.className = 'px-2.5 py-1 rounded-full badge-warn text-xs font-medium';
   }
 
   async function detectBackend() {
@@ -585,10 +623,9 @@ raw_text: AI 识别的原始全文
   async function recognize() {
     if (!state.imageDataUrl) return;
     const isSample = state.sampleIndex != null;
-    const canAi = state.useBackend || Boolean(getApiKey());
 
-    if (!isSample && !canAi) {
-      return toast('真实小票需配置 Key；或点「一键演示」免 Key 体验', true);
+    if (!isSample && !canRealRecognize()) {
+      return toast('真实小票需要服务端 Key（或本地填 Key）；也可先点「一键演示」', true);
     }
 
     els.loading.classList.remove('hidden');
@@ -599,12 +636,12 @@ raw_text: AI 识别的原始全文
       let record;
 
       if (isSample) {
-        // 样本默认走本地演示（免 Key）
         record = await recognizeLocalSample(state.sampleIndex, thumbnailBase64);
         persistRecord(record);
-      } else if (state.useBackend) {
+      } else if (state.useBackend || PROXY_URL) {
         const base64 = state.imageDataUrl.replace(/^data:[^;]+;base64,/, '');
-        const res = await fetch('/api/recognize', {
+        const endpoint = state.useBackend ? '/api/recognize' : PROXY_URL;
+        const res = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -621,6 +658,7 @@ raw_text: AI 识别的原始全文
           data.result.qr_payload = qr;
         }
         record = data;
+        if (!state.useBackend) persistRecord(record);
       } else {
         const base64 = state.imageDataUrl.replace(/^data:[^;]+;base64,/, '');
         const { text, usageMetadata } = await callGeminiDirect(base64, state.mimeType);
@@ -901,6 +939,6 @@ raw_text: AI 识别的原始全文
     toast('已保存到本机浏览器');
   });
 
-  if (els.keyInput) els.keyInput.value = getApiKey();
+  bootstrapApiKey();
   detectBackend().then(loadHistory);
 })();
