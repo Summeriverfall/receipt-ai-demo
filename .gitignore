@@ -1,5 +1,8 @@
 node_modules/
 .env
+key.txt
+key/
+*.key
 results.json
 *.log
 .DS_Store
