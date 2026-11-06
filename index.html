@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>小票 AI 识别 Demo · Gemini 2.5 Flash</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ink: '#1a1f2e',
+            mist: '#f4f6f9',
+            accent: '#0d9488',
+            accent2: '#0f766e',
+            warn: '#b45309',
+          },
+          fontFamily: {
+            sans: ['"Segoe UI"', '"Noto Sans SC"', '"Hiragino Sans"', 'system-ui', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'Consolas', 'monospace'],
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    body { background: linear-gradient(160deg, #eef2f7 0%, #f8fafc 45%, #e8f5f3 100%); min-height: 100vh; }
+    .card { background: rgba(255,255,255,.92); backdrop-filter: blur(8px); border: 1px solid rgba(15,23,42,.08); }
+    .panel-scroll { max-height: 420px; overflow: auto; }
+    .spinner {
+      width: 40px; height: 40px; border: 3px solid #ccfbf1; border-top-color: #0d9488;
+      border-radius: 50%; animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #videoPreview { transform: scaleX(-1); }
+    .thumb { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; background: #e2e8f0; }
+    pre[class*="language-"] { margin: 0; font-size: 12px; max-height: 420px; }
+    .json-edit {
+      font-family: ui-monospace, Consolas, monospace; font-size: 12px; line-height: 1.5;
+      width: 100%; min-height: 380px; border-radius: 10px; padding: 12px;
+      border: 1px solid #cbd5e1; background: #0d1117; color: #e6edf3;
+    }
+    .badge-warn { background: #fff7ed; color: #c2410c; border: 1px solid #fdba74; }
+    .badge-ok { background: #ecfdf5; color: #047857; border: 1px solid #6ee7b7; }
+  </style>
+</head>
+<body class="text-ink font-sans antialiased">
+  <header class="border-b border-slate-200/80 bg-white/70 backdrop-blur sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <p class="text-xs tracking-widest text-accent uppercase font-semibold">Feasibility Demo</p>
+        <h1 class="text-lg sm:text-xl font-semibold tracking-tight">小票 AI 识别验证</h1>
+      </div>
+      <div class="flex items-center gap-2 text-sm">
+        <button id="btnKey" type="button" class="px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-xs hover:bg-slate-50">配置 Key</button>
+        <span id="healthBadge" class="px-2.5 py-1 rounded-full bg-slate-100 text-slate-500">检查中…</span>
+        <span class="hidden sm:inline text-slate-400">gemini-2.5-flash</span>
+      </div>
+    </div>
+    <div id="keyPanel" class="hidden border-t border-slate-200 bg-white/90">
+      <div class="max-w-7xl mx-auto px-4 py-3 flex flex-col sm:flex-row gap-2 sm:items-end">
+        <label class="flex-1 text-xs text-slate-500">
+          Gemini API Key（仅保存在本机浏览器，不会上传到仓库）
+          <input id="keyInput" type="password" autocomplete="off" placeholder="AIza…" class="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-ink" />
+        </label>
+        <div class="flex gap-2">
+          <button id="btnSaveKey" type="button" class="px-3 py-2 rounded-lg bg-accent text-white text-sm">保存</button>
+          <button id="btnClearKey" type="button" class="px-3 py-2 rounded-lg border text-sm">清除</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 py-6 space-y-6">
+    <!-- 输入区 -->
+    <section class="card rounded-2xl p-5 shadow-sm">
+      <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
+        <div>
+          <h2 class="text-base font-semibold">1. 图片输入</h2>
+          <p class="text-sm text-slate-500 mt-0.5">拍照或上传日本/中文小票，也可一键加载测试样本</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button id="btnCamera" type="button" class="px-3 py-2 rounded-lg bg-ink text-white text-sm hover:bg-slate-800">打开摄像头</button>
+          <label class="px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm cursor-pointer hover:bg-slate-50">
+            上传图片
+            <input id="fileInput" type="file" accept="image/*" capture="environment" class="hidden" />
+          </label>
+          <button id="btnSamples" type="button" class="px-3 py-2 rounded-lg bg-accent text-white text-sm hover:bg-accent2">测试样本 ▾</button>
+        </div>
+      </div>
+
+      <div id="sampleMenu" class="hidden mb-4 p-3 rounded-xl bg-mist border border-slate-200">
+        <p class="text-xs text-slate-500 mb-2">内置 3 张合成日文小票（可直接识别演示）</p>
+        <div class="flex flex-wrap gap-2">
+          <button type="button" data-sample="0" class="sample-btn px-3 py-1.5 rounded-lg bg-white border text-sm hover:border-accent">コンビニ（711 风格）</button>
+          <button type="button" data-sample="1" class="sample-btn px-3 py-1.5 rounded-lg bg-white border text-sm hover:border-accent">スーパー（生鲜）</button>
+          <button type="button" data-sample="2" class="sample-btn px-3 py-1.5 rounded-lg bg-white border text-sm hover:border-accent">飲食店（手書き風）</button>
+        </div>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="rounded-xl border border-dashed border-slate-300 bg-slate-50 min-h-[220px] flex items-center justify-center overflow-hidden relative">
+          <video id="videoPreview" class="hidden absolute inset-0 w-full h-full object-cover" playsinline autoplay muted></video>
+          <canvas id="captureCanvas" class="hidden"></canvas>
+          <img id="imagePreview" alt="预览" class="hidden max-h-[280px] w-auto mx-auto" />
+          <p id="previewPlaceholder" class="text-slate-400 text-sm px-6 text-center">尚未选择图片<br/>支持手机拍照与 PC 上传</p>
+        </div>
+        <div class="flex flex-col justify-between gap-3">
+          <ul class="text-sm text-slate-600 space-y-1.5 list-disc pl-5">
+            <li>主模型：Google Gemini 2.5 Flash（视觉）</li>
+            <li>输出：结构化 JSON + 原始识别文本</li>
+            <li>人工可编辑修正，写入本地 results.json</li>
+            <li>展示耗时与 API 费用估算</li>
+          </ul>
+          <div class="flex flex-wrap gap-2">
+            <button id="btnSnap" type="button" class="hidden px-4 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent2">拍照</button>
+            <button id="btnRecognize" type="button" disabled class="px-4 py-2.5 rounded-lg bg-ink text-white text-sm font-medium disabled:opacity-40 hover:bg-slate-800">开始识别</button>
+            <button id="btnReset" type="button" class="px-4 py-2.5 rounded-lg border border-slate-200 bg-white text-sm hover:bg-slate-50">重新拍照/上传</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 结果区 -->
+    <section class="card rounded-2xl p-5 shadow-sm">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div>
+          <h2 class="text-base font-semibold">2. 识别结果</h2>
+          <p id="metaLine" class="text-sm text-slate-500 mt-0.5">等待识别…</p>
+        </div>
+        <div class="flex flex-wrap gap-2 items-center">
+          <span id="flagNeedsReview" class="hidden text-xs px-2 py-1 rounded-full badge-warn">需人工确认</span>
+          <span id="flagVertical" class="hidden text-xs px-2 py-1 rounded-full badge-warn">竖排小票建议用 GPT-4o</span>
+          <button id="btnEdit" type="button" disabled class="px-3 py-2 rounded-lg border text-sm disabled:opacity-40">人工修正</button>
+          <button id="btnSave" type="button" disabled class="hidden px-3 py-2 rounded-lg bg-accent text-white text-sm">保存修正</button>
+          <button id="btnCancelEdit" type="button" disabled class="hidden px-3 py-2 rounded-lg border text-sm">取消</button>
+        </div>
+      </div>
+
+      <div id="loadingOverlay" class="hidden mb-4 flex items-center gap-3 p-4 rounded-xl bg-teal-50 border border-teal-100">
+        <div class="spinner"></div>
+        <div>
+          <p class="font-medium text-accent2">正在调用 Gemini 识别…</p>
+          <p class="text-sm text-slate-500">通常数秒内返回，请稍候</p>
+        </div>
+      </div>
+
+      <div class="grid lg:grid-cols-3 gap-4">
+        <div>
+          <h3 class="text-xs font-semibold tracking-wider text-slate-400 uppercase mb-2">原图</h3>
+          <div class="rounded-xl border bg-slate-50 panel-scroll flex items-start justify-center p-2 min-h-[200px]">
+            <img id="resultImage" alt="" class="hidden max-w-full rounded-lg" />
+            <p id="resultImageEmpty" class="text-slate-400 text-sm py-16">—</p>
+          </div>
+        </div>
+        <div>
+          <h3 class="text-xs font-semibold tracking-wider text-slate-400 uppercase mb-2">Raw Text</h3>
+          <pre id="rawText" class="panel-scroll rounded-xl border bg-slate-900 text-slate-100 p-3 text-xs whitespace-pre-wrap min-h-[200px]">—</pre>
+        </div>
+        <div>
+          <h3 class="text-xs font-semibold tracking-wider text-slate-400 uppercase mb-2">结构化 JSON</h3>
+          <div id="jsonViewWrap">
+            <pre class="rounded-xl border overflow-auto"><code id="jsonView" class="language-json">{}</code></pre>
+          </div>
+          <textarea id="jsonEdit" class="json-edit hidden" spellcheck="false"></textarea>
+        </div>
+      </div>
+    </section>
+
+    <!-- 历史 -->
+    <section class="card rounded-2xl p-5 shadow-sm">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h2 class="text-base font-semibold">3. 本次会话历史</h2>
+          <p class="text-sm text-slate-500 mt-0.5">Pages 版保存在本机浏览器；本地服务版写入 results.json</p>
+        </div>
+        <button id="btnRefreshHistory" type="button" class="text-sm text-accent hover:underline">刷新</button>
+      </div>
+      <div id="historyList" class="space-y-2">
+        <p class="text-sm text-slate-400 py-6 text-center">暂无记录</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="text-center text-xs text-slate-400 py-8">
+    Receipt AI Feasibility Demo · 仅供技术选型验证 · Powered by Gemini 2.5 Flash
+  </footer>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
