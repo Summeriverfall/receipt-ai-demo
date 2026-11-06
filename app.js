@@ -1,4 +1,4 @@
-/* 小票 AI Demo — 前端（GitHub Pages 直连 Gemini / 本地可走 Express） */
+/* 小票 Demo：默认免 Key 本地演示；可选 Gemini；二维码 jsQR 本地解 */
 (() => {
   const $ = (id) => document.getElementById(id);
   const MODEL = 'gemini-2.5-flash';
@@ -25,6 +25,104 @@ raw_text: AI 识别的原始全文
 - 如果某个字段无法识别，输出 null
 - 只输出 JSON，不要输出其他文字`;
 
+  const SAMPLES = [
+    {
+      title: 'セブン‐イレブン',
+      sub: '東京駅前店',
+      dateLabel: '2026年11月5日(水) 18:42',
+      lines: [
+        ['ホットコーヒー', '¥130'],
+        ['おにぎり鮭', '¥146'],
+        ['お茶 500ml', '¥108'],
+      ],
+      tax8: 28,
+      tax10: 13,
+      total: 384,
+      note: '税込',
+      result: {
+        shop_name: 'セブン‐イレブン 東京駅前店',
+        date: '2026-11-05',
+        time: '18:42',
+        items: [
+          { name: 'ホットコーヒー', quantity: 1, unit_price: 130, total_price: 130 },
+          { name: 'おにぎり鮭', quantity: 1, unit_price: 146, total_price: 146 },
+          { name: 'お茶 500ml', quantity: 1, unit_price: 108, total_price: 108 },
+        ],
+        subtotal: 343,
+        tax: 41,
+        total: 384,
+        currency: 'JPY',
+        confidence: { total: 0.98, date: 0.99, items: 0.96 },
+        raw_text:
+          'セブン‐イレブン 東京駅前店\n2026年11月5日(水) 18:42\nホットコーヒー ¥130\nおにぎり鮭 ¥146\nお茶 500ml ¥108\n小計 ¥343\n消費税 ¥41\n合計 ¥384',
+      },
+    },
+    {
+      title: 'ライフ 浅草店',
+      sub: 'スーパーマーケット',
+      dateLabel: '2026年11月4日(火) 12:15',
+      lines: [
+        ['牛乳 1L', '¥218'],
+        ['卵 10個', '¥298'],
+        ['食パン', '¥168'],
+        ['バナナ', '¥128'],
+      ],
+      tax8: 58,
+      tax10: 0,
+      total: 812,
+      note: '軽減税率対象あり',
+      result: {
+        shop_name: 'ライフ 浅草店',
+        date: '2026-11-04',
+        time: '12:15',
+        items: [
+          { name: '牛乳 1L', quantity: 1, unit_price: 218, total_price: 218 },
+          { name: '卵 10個', quantity: 1, unit_price: 298, total_price: 298 },
+          { name: '食パン', quantity: 1, unit_price: 168, total_price: 168 },
+          { name: 'バナナ', quantity: 1, unit_price: 128, total_price: 128 },
+        ],
+        subtotal: 754,
+        tax: 58,
+        total: 812,
+        currency: 'JPY',
+        confidence: { total: 0.97, date: 0.98, items: 0.94 },
+        raw_text:
+          'ライフ 浅草店\n2026年11月4日(火) 12:15\n牛乳 1L ¥218\n卵 10個 ¥298\n食パン ¥168\nバナナ ¥128\n小計 ¥754\n消費税(8%) ¥58\n合計 ¥812',
+      },
+    },
+    {
+      title: '居酒屋 まつや',
+      sub: '手書き伝票風',
+      dateLabel: '2026/11/03 19:50',
+      lines: [
+        ['生ビール ×2', '¥980'],
+        ['唐揚げ', '¥580'],
+        ['枝豆', '¥380'],
+      ],
+      tax8: 0,
+      tax10: 194,
+      total: 2134,
+      note: '※手書き風サンプル',
+      result: {
+        shop_name: '居酒屋 まつや',
+        date: '2026-11-03',
+        time: '19:50',
+        items: [
+          { name: '生ビール', quantity: 2, unit_price: 490, total_price: 980 },
+          { name: '唐揚げ', quantity: 1, unit_price: 580, total_price: 580 },
+          { name: '枝豆', quantity: 1, unit_price: 380, total_price: 380 },
+        ],
+        subtotal: 1940,
+        tax: 194,
+        total: 2134,
+        currency: 'JPY',
+        confidence: { total: 0.9, date: 0.92, items: 0.85 },
+        raw_text:
+          '居酒屋 まつや\n2026/11/03 19:50\n生ビール ×2 ¥980\n唐揚げ ¥580\n枝豆 ¥380\n小計 ¥1940\n消費税(10%) ¥194\n合計 ¥2134',
+      },
+    },
+  ];
+
   const state = {
     imageDataUrl: null,
     mimeType: 'image/jpeg',
@@ -32,6 +130,7 @@ raw_text: AI 识别的原始全文
     editing: false,
     stream: null,
     useBackend: false,
+    sampleIndex: null,
   };
 
   const els = {
@@ -41,6 +140,7 @@ raw_text: AI 识别的原始全文
     keyInput: $('keyInput'),
     btnSaveKey: $('btnSaveKey'),
     btnClearKey: $('btnClearKey'),
+    btnQuickDemo: $('btnQuickDemo'),
     video: $('videoPreview'),
     canvas: $('captureCanvas'),
     imagePreview: $('imagePreview'),
@@ -92,11 +192,11 @@ raw_text: AI 识别的原始全文
   function updateKeyBadge() {
     if (state.useBackend) return;
     if (getApiKey()) {
-      els.healthBadge.textContent = 'API Key 已就绪';
+      els.healthBadge.textContent = '演示 + 真实 AI 就绪';
       els.healthBadge.className = 'px-2.5 py-1 rounded-full badge-ok text-xs font-medium';
     } else {
-      els.healthBadge.textContent = '点此配置 API Key';
-      els.healthBadge.className = 'px-2.5 py-1 rounded-full badge-warn text-xs font-medium cursor-pointer';
+      els.healthBadge.textContent = '演示模式 · 免 Key';
+      els.healthBadge.className = 'px-2.5 py-1 rounded-full badge-ok text-xs font-medium';
     }
   }
 
@@ -106,18 +206,11 @@ raw_text: AI 识别的原始全文
       if (!r.ok) throw new Error('no');
       const d = await r.json();
       state.useBackend = true;
-      if (d.hasKey) {
-        els.healthBadge.textContent = '本地服务 · Key 就绪';
-        els.healthBadge.className = 'px-2.5 py-1 rounded-full badge-ok text-xs font-medium';
-      } else {
-        els.healthBadge.textContent = '本地服务 · 未配 Key';
-        els.healthBadge.className = 'px-2.5 py-1 rounded-full badge-warn text-xs font-medium';
-      }
-      if (els.btnKey) els.btnKey.classList.add('hidden');
+      els.healthBadge.textContent = d.hasKey ? '本地服务 · Key 就绪' : '本地服务 · 演示可用';
+      els.healthBadge.className = 'px-2.5 py-1 rounded-full badge-ok text-xs font-medium';
     } catch {
       state.useBackend = false;
       updateKeyBadge();
-      if (els.btnKey) els.btnKey.classList.remove('hidden');
     }
   }
 
@@ -183,9 +276,36 @@ raw_text: AI 识别的原始全文
     localStorage.setItem(HIST_STORAGE, JSON.stringify(list.slice(0, 40)));
   }
 
+  function sleep(ms) {
+    return new Promise((r) => setTimeout(r, ms));
+  }
+
+  async function decodeQrFromDataUrl(dataUrl) {
+    if (typeof jsQR !== 'function') return null;
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement('canvas');
+        const max = 800;
+        const scale = Math.min(1, max / Math.max(img.width, img.height));
+        c.width = Math.round(img.width * scale);
+        c.height = Math.round(img.height * scale);
+        const ctx = c.getContext('2d');
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        const imageData = ctx.getImageData(0, 0, c.width, c.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+          inversionAttempts: 'attemptBoth',
+        });
+        resolve(code?.data || null);
+      };
+      img.onerror = () => resolve(null);
+      img.src = dataUrl;
+    });
+  }
+
   async function callGeminiDirect(base64, mimeType) {
     const key = getApiKey();
-    if (!key) throw new Error('请先配置 Gemini API Key（右上角）');
+    if (!key) throw new Error('未配置 Gemini Key');
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(key)}`;
     const body = {
@@ -210,23 +330,20 @@ raw_text: AI 识别的原始全文
       body: JSON.stringify(body),
     });
     const data = await res.json();
-    if (!res.ok) {
-      const msg = data?.error?.message || `Gemini 错误 ${res.status}`;
-      throw new Error(msg);
-    }
+    if (!res.ok) throw new Error(data?.error?.message || `Gemini 错误 ${res.status}`);
     const text =
       data?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
     return { text, usageMetadata: data.usageMetadata };
   }
 
-  function buildRecord({ parsed, rawModelText, elapsedMs, usage, thumbnail }) {
+  function buildRecord({ parsed, rawModelText, elapsedMs, usage, thumbnail, model }) {
     const confidence = parsed.confidence || {};
     const totalConf = Number(confidence.total ?? 0);
     const cost = estimateCostUsd(usage);
     return {
       id: uuid(),
       createdAt: new Date().toISOString(),
-      model: MODEL,
+      model: model || MODEL,
       elapsedMs,
       ...cost,
       needsReview: !(totalConf >= 0.7),
@@ -248,6 +365,7 @@ raw_text: AI 识别的原始全文
           ...(typeof confidence === 'object' && !Array.isArray(confidence) ? confidence : {}),
         },
         raw_text: parsed.raw_text || stripJsonFence(rawModelText),
+        qr_payload: parsed.qr_payload ?? null,
       },
       rawModelText,
       edited: false,
@@ -263,10 +381,11 @@ raw_text: AI 识别的原始全文
     els.btnSnap.classList.add('hidden');
   }
 
-  function setPreview(dataUrl, mime) {
+  function setPreview(dataUrl, mime, sampleIndex = null) {
     stopCamera();
     state.imageDataUrl = dataUrl;
     state.mimeType = mime || 'image/jpeg';
+    state.sampleIndex = sampleIndex;
     els.imagePreview.src = dataUrl;
     els.imagePreview.classList.remove('hidden');
     els.previewPlaceholder.classList.add('hidden');
@@ -278,6 +397,7 @@ raw_text: AI 识别的原始全文
     state.imageDataUrl = null;
     state.current = null;
     state.editing = false;
+    state.sampleIndex = null;
     els.fileInput.value = '';
     els.imagePreview.classList.add('hidden');
     els.imagePreview.removeAttribute('src');
@@ -321,10 +441,11 @@ raw_text: AI 识别的原始全文
     state.current = record;
     state.editing = false;
     const r = record.result || {};
+    const modeHint = record.model === 'local-demo' ? '本地演示' : record.model || '';
     els.metaLine.textContent = `耗时 ${record.elapsedMs} ms · 约 $${Number(
       record.estimatedCostUsd || 0
-    ).toFixed(6)} · tokens ${record.totalTokens || '—'} · ${record.model || ''}${
-      record.edited ? ' · 已人工修正' : ''
+    ).toFixed(6)} · ${modeHint}${record.edited ? ' · 已人工修正' : ''}${
+      r.qr_payload ? ' · 已解二维码' : ''
     }`;
 
     els.flagNeedsReview.classList.toggle('hidden', !record.needsReview);
@@ -352,9 +473,8 @@ raw_text: AI 识别的原始全文
 
   function formatMoney(n, currency) {
     if (n == null || Number.isNaN(Number(n))) return '—';
-    const cur = currency || 'JPY';
-    if (cur === 'JPY') return `¥${Number(n).toLocaleString('ja-JP')}`;
-    return `${cur} ${Number(n)}`;
+    if ((currency || 'JPY') === 'JPY') return `¥${Number(n).toLocaleString('ja-JP')}`;
+    return `${currency} ${Number(n)}`;
   }
 
   function confPct(v) {
@@ -387,8 +507,8 @@ raw_text: AI 识别的原始全文
             <div class="flex-1 min-w-0">
               <div class="flex flex-wrap items-center gap-2">
                 <span class="font-medium truncate">${escapeHtml(r.shop_name || '未知店铺')}</span>
+                ${item.model === 'local-demo' ? '<span class="text-[10px] px-1.5 py-0.5 rounded badge-ok">本地</span>' : ''}
                 ${item.needsReview ? '<span class="text-[10px] px-1.5 py-0.5 rounded badge-warn">需确认</span>' : ''}
-                ${item.edited ? '<span class="text-[10px] px-1.5 py-0.5 rounded badge-ok">已修正</span>' : ''}
               </div>
               <div class="text-xs text-slate-500 mt-0.5 flex flex-wrap gap-x-3 gap-y-1">
                 <span>总额 ${formatMoney(r.total, r.currency)}</span>
@@ -413,7 +533,7 @@ raw_text: AI 识别的原始全文
         const id = btn.getAttribute('data-load-id');
         const found = list.find((x) => x.id === id);
         if (found) {
-          if (found.imagePreview) setPreview(found.imagePreview, 'image/jpeg');
+          if (found.imagePreview) setPreview(found.imagePreview, 'image/jpeg', null);
           renderResult(found);
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }
@@ -434,21 +554,56 @@ raw_text: AI 识别的原始全文
     renderHistory(loadLocalHistory());
   }
 
+  function persistRecord(record) {
+    if (state.useBackend) return;
+    const list = loadLocalHistory();
+    list.unshift(record);
+    saveLocalHistory(list);
+  }
+
+  async function recognizeLocalSample(idx, thumbnail) {
+    const sample = SAMPLES[idx];
+    await sleep(450 + Math.random() * 350);
+    const qr = await decodeQrFromDataUrl(state.imageDataUrl);
+    const parsed = {
+      ...sample.result,
+      qr_payload: qr,
+      raw_text:
+        sample.result.raw_text +
+        (qr ? `\n\n[QR 本地解码]\n${qr}` : '\n\n[QR] 未检测到'),
+    };
+    return buildRecord({
+      parsed,
+      rawModelText: parsed.raw_text,
+      elapsedMs: 480,
+      usage: { promptTokenCount: 0, candidatesTokenCount: 0, totalTokenCount: 0 },
+      thumbnail,
+      model: 'local-demo',
+    });
+  }
+
   async function recognize() {
     if (!state.imageDataUrl) return;
-    if (!state.useBackend && !getApiKey()) {
-      els.keyPanel.classList.remove('hidden');
-      return toast('请先填写 Gemini API Key', true);
+    const isSample = state.sampleIndex != null;
+    const canAi = state.useBackend || Boolean(getApiKey());
+
+    if (!isSample && !canAi) {
+      return toast('真实小票需配置 Key；或点「一键演示」免 Key 体验', true);
     }
+
     els.loading.classList.remove('hidden');
     els.btnRecognize.disabled = true;
     const started = Date.now();
     try {
       const thumbnailBase64 = await makeThumbnail(state.imageDataUrl);
-      const base64 = state.imageDataUrl.replace(/^data:[^;]+;base64,/, '');
-
       let record;
-      if (state.useBackend) {
+
+      if (isSample) {
+        // 样本默认走本地演示（免 Key）
+        record = await recognizeLocalSample(state.sampleIndex, thumbnailBase64);
+        persistRecord(record);
+      } else if (state.useBackend) {
+        const base64 = state.imageDataUrl.replace(/^data:[^;]+;base64,/, '');
         const res = await fetch('/api/recognize', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -460,25 +615,32 @@ raw_text: AI 识别的原始全文
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || '识别失败');
+        const qr = await decodeQrFromDataUrl(state.imageDataUrl);
+        if (qr) {
+          data.result = data.result || {};
+          data.result.qr_payload = qr;
+        }
         record = data;
       } else {
+        const base64 = state.imageDataUrl.replace(/^data:[^;]+;base64,/, '');
         const { text, usageMetadata } = await callGeminiDirect(base64, state.mimeType);
         const parsed = parseReceiptJson(text);
+        const qr = await decodeQrFromDataUrl(state.imageDataUrl);
+        if (qr) parsed.qr_payload = qr;
         record = buildRecord({
           parsed,
           rawModelText: text,
           elapsedMs: Date.now() - started,
           usage: usageMetadata,
           thumbnail: thumbnailBase64,
+          model: MODEL,
         });
-        const list = loadLocalHistory();
-        list.unshift(record);
-        saveLocalHistory(list);
+        persistRecord(record);
       }
 
       renderResult(record);
       await loadHistory();
-      toast('识别完成');
+      toast(record.model === 'local-demo' ? '本地演示完成（未耗 API）' : '识别完成');
     } catch (err) {
       toast(err.message || '识别失败', true);
     } finally {
@@ -487,9 +649,20 @@ raw_text: AI 识别的原始全文
     }
   }
 
-  function drawReceipt(variant) {
+  function qrPayloadForSample(idx) {
+    const r = SAMPLES[idx].result;
+    return JSON.stringify({
+      type: 'receipt-demo',
+      shop: r.shop_name,
+      date: r.date,
+      total: r.total,
+      currency: r.currency,
+    });
+  }
+
+  async function drawReceipt(variant) {
     const W = 420;
-    const H = 640;
+    const H = 720;
     const c = document.createElement('canvas');
     c.width = W;
     c.height = H;
@@ -499,53 +672,7 @@ raw_text: AI 识别的原始全文
     ctx.fillStyle = '#111';
     ctx.textAlign = 'center';
 
-    const samples = [
-      {
-        title: 'セブン‐イレブン',
-        sub: '東京駅前店',
-        date: '2026年11月5日(水) 18:42',
-        lines: [
-          ['ホットコーヒー', '¥130'],
-          ['おにぎり鮭', '¥146'],
-          ['お茶 500ml', '¥108'],
-        ],
-        tax8: 28,
-        tax10: 13,
-        total: 384,
-        note: '税込',
-      },
-      {
-        title: 'ライフ 浅草店',
-        sub: 'スーパーマーケット',
-        date: '2026年11月4日(火) 12:15',
-        lines: [
-          ['牛乳 1L', '¥218'],
-          ['卵 10個', '¥298'],
-          ['食パン', '¥168'],
-          ['バナナ', '¥128'],
-        ],
-        tax8: 58,
-        tax10: 0,
-        total: 812,
-        note: '軽減税率対象あり',
-      },
-      {
-        title: '居酒屋 まつや',
-        sub: '手書き伝票風',
-        date: '2026/11/03 19:50',
-        lines: [
-          ['生ビール ×2', '¥980'],
-          ['唐揚げ', '¥580'],
-          ['枝豆', '¥380'],
-        ],
-        tax8: 0,
-        tax10: 194,
-        total: 2134,
-        note: '※手書き風サンプル',
-      },
-    ];
-
-    const s = samples[variant] || samples[0];
+    const s = SAMPLES[variant] || SAMPLES[0];
     let y = 36;
     ctx.font = 'bold 26px "Hiragino Sans", "Noto Sans JP", sans-serif';
     ctx.fillText(s.title, W / 2, y);
@@ -562,7 +689,7 @@ raw_text: AI 识别的原始全文
     ctx.stroke();
     y += 28;
     ctx.font = '13px monospace';
-    ctx.fillText(s.date, W / 2, y);
+    ctx.fillText(s.dateLabel, W / 2, y);
     y += 30;
 
     ctx.textAlign = 'left';
@@ -581,7 +708,6 @@ raw_text: AI 识别的原始全文
     ctx.lineTo(W - 30, y);
     ctx.stroke();
     y += 28;
-    ctx.font = '14px sans-serif';
     const rows = [
       ['小計', `¥${s.total - s.tax8 - s.tax10}`],
       s.tax8 ? ['消費税(8%)', `¥${s.tax8}`] : null,
@@ -597,20 +723,49 @@ raw_text: AI 识别的原始全文
       y += 26;
     });
 
-    y += 20;
+    y += 16;
     ctx.textAlign = 'center';
     ctx.font = '12px sans-serif';
     ctx.fillStyle = '#555';
     ctx.fillText(s.note, W / 2, y);
-    ctx.fillText('デモ用合成小票 / Sample Receipt', W / 2, y + 22);
-    ctx.fillText('Thank you', W / 2, y + 44);
+    ctx.fillText('デモ用合成小票', W / 2, y + 20);
+
+    // 底部二维码（本地生成，jsQR 可解）
+    try {
+      if (typeof QRCode !== 'undefined' && QRCode.toCanvas) {
+        const qrCanvas = document.createElement('canvas');
+        await QRCode.toCanvas(qrCanvas, qrPayloadForSample(variant), {
+          width: 120,
+          margin: 1,
+          errorCorrectionLevel: 'M',
+        });
+        const qx = (W - 120) / 2;
+        const qy = H - 150;
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(qx - 6, qy - 6, 132, 132);
+        ctx.drawImage(qrCanvas, qx, qy, 120, 120);
+        ctx.fillStyle = '#555';
+        ctx.font = '11px sans-serif';
+        ctx.fillText('電子レシート QR（本地可解）', W / 2, qy + 140);
+      }
+    } catch (_) {
+      /* ignore */
+    }
 
     return c.toDataURL('image/png');
+  }
+
+  async function loadSampleAndRecognize(idx) {
+    const dataUrl = await drawReceipt(idx);
+    setPreview(dataUrl, 'image/png', idx);
+    els.sampleMenu.classList.add('hidden');
+    await recognize();
   }
 
   async function openCamera() {
     try {
       stopCamera();
+      state.sampleIndex = null;
       state.stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: 'environment' } },
         audio: false,
@@ -632,9 +787,8 @@ raw_text: AI 识别的原始全文
     const c = els.canvas;
     c.width = v.videoWidth;
     c.height = v.videoHeight;
-    const ctx = c.getContext('2d');
-    ctx.drawImage(v, 0, 0);
-    setPreview(c.toDataURL('image/jpeg', 0.92), 'image/jpeg');
+    c.getContext('2d').drawImage(v, 0, 0);
+    setPreview(c.toDataURL('image/jpeg', 0.92), 'image/jpeg', null);
   }
 
   els.btnCamera.addEventListener('click', openCamera);
@@ -642,6 +796,10 @@ raw_text: AI 识别的原始全文
   els.btnReset.addEventListener('click', clearAll);
   els.btnRecognize.addEventListener('click', recognize);
   els.btnRefreshHistory.addEventListener('click', loadHistory);
+
+  if (els.btnQuickDemo) {
+    els.btnQuickDemo.addEventListener('click', () => loadSampleAndRecognize(0));
+  }
 
   els.healthBadge.addEventListener('click', () => {
     if (!state.useBackend) els.keyPanel.classList.toggle('hidden');
@@ -653,14 +811,14 @@ raw_text: AI 识别的原始全文
     els.btnSaveKey.addEventListener('click', () => {
       setApiKey(els.keyInput.value);
       els.keyPanel.classList.add('hidden');
-      toast(getApiKey() ? 'API Key 已保存在本机浏览器' : '已清空');
+      toast(getApiKey() ? '已保存：上传真实小票将走 Gemini' : '已回到纯演示模式');
     });
   }
   if (els.btnClearKey) {
     els.btnClearKey.addEventListener('click', () => {
       els.keyInput.value = '';
       setApiKey('');
-      toast('已清除本机 Key');
+      toast('已清除 Key，继续用演示模式');
     });
   }
 
@@ -668,7 +826,7 @@ raw_text: AI 识别的原始全文
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => setPreview(reader.result, file.type || 'image/jpeg');
+    reader.onload = () => setPreview(reader.result, file.type || 'image/jpeg', null);
     reader.readAsDataURL(file);
   });
 
@@ -679,9 +837,7 @@ raw_text: AI 识别的原始全文
   document.querySelectorAll('.sample-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const idx = Number(btn.getAttribute('data-sample') || 0);
-      setPreview(drawReceipt(idx), 'image/png');
-      els.sampleMenu.classList.add('hidden');
-      toast('已加载测试样本，可点「开始识别」');
+      loadSampleAndRecognize(idx);
     });
   });
 
